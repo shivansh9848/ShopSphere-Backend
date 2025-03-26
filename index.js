@@ -78,7 +78,6 @@ server.use(
   })
 );
 
-server.use(express.static(path.resolve(__dirname, "build")));
 server.use(cookieParser());
 server.use(
   session({
@@ -102,10 +101,6 @@ server.use("/auth", authRouter.router);
 server.use("/cart", isAuth(), cartRouter.router);
 server.use("/order", isAuth(), orderRouter.router);
 
-// Fallback for React Router
-server.get("*", (req, res) =>
-  res.sendFile(path.resolve("build", "index.html"))
-);
 
 // Passport Local Strategy
 passport.use(
