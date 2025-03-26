@@ -38,11 +38,7 @@ server.post(
     let event;
 
     try {
-      event = stripe.webhooks.constructEvent(
-        request.body,
-        sig,
-        endpointSecret
-      );
+      event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
     } catch (err) {
       response.status(400).send(`Webhook Error: ${err.message}`);
       return;
@@ -74,7 +70,14 @@ const opts = {};
 opts.jwtFromRequest = cookieExtractor;
 opts.secretOrKey = process.env.JWT_SECRET_KEY;
 
-server.use(cors());
+server.use(
+  cors({
+    exposedHeaders: ["X-Total-Count"],
+    origin: ["http://localhost:3000", "https://shop-sphere-snowy.vercel.app"],
+    credentials: true, // if using cookies
+  })
+);
+
 server.use(express.static(path.resolve(__dirname, "build")));
 server.use(cookieParser());
 server.use(
@@ -85,12 +88,6 @@ server.use(
   })
 );
 server.use(passport.authenticate("session"));
-server.use(
-  cors({
-    exposedHeaders: ["X-Total-Count"],
-  })
-);
-
 // Routes
 server.use("/products", isAuth(), productsRouter.router);
 server.use("/categories", isAuth(), categoriesRouter.router);
@@ -108,31 +105,37 @@ server.get("*", (req, res) =>
 // Passport Local Strategy
 passport.use(
   "local",
-  new LocalStrategy({ usernameField: "email" }, async (email, password, done) => {
-    console.log("LocalStrategy is called");
-    try {
-      const user = await User.findOne({ email: email });
-      if (!user) {
-        return done(null, false, { message: "invalid credentials" });
-      }
-      crypto.pbkdf2(
-        password,
-        user.salt,
-        310000,
-        32,
-        "sha256",
-        async function (err, hashedPassword) {
-          if (err || !crypto.timingSafeEqual(user.password, hashedPassword)) {
-            return done(null, false, { message: "invalid credentials" });
-          }
-          const token = jwt.sign(sanitizeUser(user), process.env.JWT_SECRET_KEY);
-          done(null, { id: user.id, role: user.role, token });
+  new LocalStrategy(
+    { usernameField: "email" },
+    async (email, password, done) => {
+      console.log("LocalStrategy is called");
+      try {
+        const user = await User.findOne({ email: email });
+        if (!user) {
+          return done(null, false, { message: "invalid credentials" });
         }
-      );
-    } catch (err) {
-      done(err);
+        crypto.pbkdf2(
+          password,
+          user.salt,
+          310000,
+          32,
+          "sha256",
+          async function (err, hashedPassword) {
+            if (err || !crypto.timingSafeEqual(user.password, hashedPassword)) {
+              return done(null, false, { message: "invalid credentials" });
+            }
+            const token = jwt.sign(
+              sanitizeUser(user),
+              process.env.JWT_SECRET_KEY
+            );
+            done(null, { id: user.id, role: user.role, token });
+          }
+        );
+      } catch (err) {
+        done(err);
+      }
     }
-  })
+  )
 );
 
 // Passport JWT Strategy
