@@ -21,62 +21,67 @@ const path = require("path");
 const User = require("./models/User");
 const { isAuth, sanitizeUser, cookieExtractor } = require("./services/common");
 const Order = require("./models/Order");
-const { env } = require("process");
 const stripe = require("stripe")(process.env.STRIPE_SERVER_KEY);
 
-server.use(express.json()); // to parse req.body
-//WebHook
+// Middleware to parse JSON bodies
+server.use(express.json());
 
-const endpointSecret = process.env.ENDPOINT_SECERT;
+// Webhook endpoint
+const endpointSecret = process.env.ENDPOINT_SECRET;
 
-server.post('/webhook', express.raw({type: 'application/json'}), async (request, response) => {
-  const sig = request.headers['stripe-signature'];
+server.post(
+  "/webhook",
+  express.raw({ type: "application/json" }),
+  async (request, response) => {
+    const sig = request.headers["stripe-signature"];
 
-  let event;
+    let event;
 
-  try {
-    event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
-  } catch (err) {
-    response.status(400).send(`Webhook Error: ${err.message}`);
-    return;
-  }
-
-  // Handle the event
-  switch (event.type) {
-    case 'payment_intent.succeeded':
-      const paymentIntentSucceeded = event.data.object;
-      const order = await Order.findById(
-        paymentIntentSucceeded.metadata.orderId
+    try {
+      event = stripe.webhooks.constructEvent(
+        request.body,
+        sig,
+        endpointSecret
       );
-      order.paymentStatus = 'received';
-      await order.save();
-      // Then define and call a function to handle the event payment_intent.succeeded
-      break;
-    // ... handle other event types
-    default:
-      console.log(`Unhandled event type ${event.type}`);
+    } catch (err) {
+      response.status(400).send(`Webhook Error: ${err.message}`);
+      return;
+    }
+
+    // Handle the event
+    switch (event.type) {
+      case "payment_intent.succeeded":
+        const paymentIntentSucceeded = event.data.object;
+        const order = await Order.findById(
+          paymentIntentSucceeded.metadata.orderId
+        );
+        if (order) {
+          order.paymentStatus = "received";
+          await order.save();
+        }
+        break;
+      default:
+        console.log(`Unhandled event type ${event.type}`);
+    }
+
+    // Acknowledge receipt of the event
+    response.send();
   }
-
-  // Return a 200 response to acknowledge receipt of the event
-  response.send();
-});
-
+);
 
 // JWT options
-
 const opts = {};
 opts.jwtFromRequest = cookieExtractor;
-opts.secretOrKey = process.env.JWT_SECERT_KEY;
-server.use(cors());
+opts.secretOrKey = process.env.JWT_SECRET_KEY;
 
-//middlewares
+server.use(cors());
 server.use(express.static(path.resolve(__dirname, "build")));
 server.use(cookieParser());
 server.use(
   session({
     secret: process.env.SESSION_KEY,
-    resave: false, // don't save session if unmodified
-    saveUninitialized: false, // don't create session until something stored
+    resave: false,
+    saveUninitialized: false,
   })
 );
 server.use(passport.authenticate("session"));
@@ -86,6 +91,7 @@ server.use(
   })
 );
 
+// Routes
 server.use("/products", isAuth(), productsRouter.router);
 server.use("/categories", isAuth(), categoriesRouter.router);
 server.use("/brands", isAuth(), brandsRouter.router);
@@ -94,26 +100,20 @@ server.use("/auth", authRouter.router);
 server.use("/cart", isAuth(), cartRouter.router);
 server.use("/order", isAuth(), orderRouter.router);
 
-// this line we add to make react router work in case of other routes doesnt match
+// Fallback for React Router
 server.get("*", (req, res) =>
   res.sendFile(path.resolve("build", "index.html"))
 );
-// Passport Strategies
 
+// Passport Local Strategy
 passport.use(
   "local",
-  new LocalStrategy({ usernameField: "email" }, async function (
-    email,
-    password,
-    done
-  ) {
-    // by default passport uses username
+  new LocalStrategy({ usernameField: "email" }, async (email, password, done) => {
     console.log("LocalStrategy is called");
     try {
       const user = await User.findOne({ email: email });
-      console.log(email, password, user);
       if (!user) {
-        return done(null, false, { message: "invalid credentials" }); // for safety
+        return done(null, false, { message: "invalid credentials" });
       }
       crypto.pbkdf2(
         password,
@@ -122,14 +122,11 @@ passport.use(
         32,
         "sha256",
         async function (err, hashedPassword) {
-          if (!crypto.timingSafeEqual(user.password, hashedPassword)) {
+          if (err || !crypto.timingSafeEqual(user.password, hashedPassword)) {
             return done(null, false, { message: "invalid credentials" });
           }
-          const token = jwt.sign(
-            sanitizeUser(user),
-            process.env.JWT_SECERT_KEY
-          );
-          done(null, { id: user.id, role: user.role, token }); // this lines sends to serializer
+          const token = jwt.sign(sanitizeUser(user), process.env.JWT_SECRET_KEY);
+          done(null, { id: user.id, role: user.role, token });
         }
       );
     } catch (err) {
@@ -138,15 +135,15 @@ passport.use(
   })
 );
 
+// Passport JWT Strategy
 passport.use(
   "jwt",
-  new JwtStrategy(opts, async function (jwt_payload, done) {
-    console.log("JwtStrategy is called");
-    console.log({ jwt_payload });
+  new JwtStrategy(opts, async (jwt_payload, done) => {
+    console.log("JwtStrategy is called", { jwt_payload });
     try {
       const user = await User.findById(jwt_payload.id);
       if (user) {
-        return done(null, sanitizeUser(user)); // this calls serializer
+        return done(null, sanitizeUser(user));
       } else {
         return done(null, false);
       }
@@ -156,28 +153,27 @@ passport.use(
   })
 );
 
-// this creates session variable req.user on being called from callbacks
-passport.serializeUser(function (user, cb) {
+// Serialize user to session
+passport.serializeUser((user, cb) => {
   console.log("serialize", user);
-  process.nextTick(function () {
+  process.nextTick(() => {
     return cb(null, { id: user.id, role: user.role });
   });
 });
 
-// this changes session variable req.user when called from authorized request
-
-passport.deserializeUser(function (user, cb) {
+// Deserialize user from session
+passport.deserializeUser((user, cb) => {
   console.log("de-serialize", user);
-  process.nextTick(function () {
+  process.nextTick(() => {
     return cb(null, user);
   });
 });
 
-server.post('/create-payment-intent', async (req, res) => {
+// Create Payment Intent endpoint
+server.post("/create-payment-intent", async (req, res) => {
   const { TotalAmount, orderId, customerDetails } = req.body;
 
   try {
-    // ✅ Create customer with actual details from frontend
     const customer = await stripe.customers.create({
       name: customerDetails?.name,
       email: customerDetails?.email,
@@ -187,17 +183,17 @@ server.post('/create-payment-intent', async (req, res) => {
         city: customerDetails?.address?.city,
         state: customerDetails?.address?.state,
         postal_code: customerDetails?.address?.postal_code,
-        country: customerDetails?.address?.country || 'IN'
-      }
+        country: customerDetails?.address?.country || "IN",
+      },
     });
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: TotalAmount * 100, // amount in paise
+      amount: TotalAmount * 100, // amount in smallest currency unit (e.g., paise)
       currency: "usd",
       customer: customer.id,
       automatic_payment_methods: { enabled: true },
       description: `Order #${orderId} payment for exported goods/services`,
-      metadata: { orderId }
+      metadata: { orderId },
     });
 
     res.json({ clientSecret: paymentIntent.client_secret });
@@ -207,10 +203,7 @@ server.post('/create-payment-intent', async (req, res) => {
   }
 });
 
-
-
-main().catch((err) => console.log(err));
-
+// Connect to MongoDB and start server
 async function main() {
   try {
     await mongoose.connect(process.env.MONGO_URI, {
@@ -222,6 +215,8 @@ async function main() {
     console.error("Error connecting to MongoDB:", error);
   }
 }
+
+main().catch((err) => console.log(err));
 
 server.listen(process.env.PORT, () => {
   console.log(`Server is running on port ${process.env.PORT}`);
