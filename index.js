@@ -1,4 +1,5 @@
 require("dotenv").config();
+const MongoStore = require("connect-mongo");
 const express = require("express");
 const server = express();
 const mongoose = require("mongoose");
@@ -22,7 +23,6 @@ const User = require("./models/User");
 const { isAuth, sanitizeUser, cookieExtractor } = require("./services/common");
 const Order = require("./models/Order");
 const stripe = require("stripe")(process.env.STRIPE_SERVER_KEY);
-
 // Middleware to parse JSON bodies
 server.use(express.json());
 
@@ -85,6 +85,11 @@ server.use(
     secret: process.env.SESSION_KEY,
     resave: false,
     saveUninitialized: false,
+    store: MongoStore.create({
+      mongoUrl: process.env.MONGO_URI,
+      // Optional options:
+      ttl: 14 * 24 * 60 * 60, // session expiration in seconds (14 days)
+    }),
   })
 );
 server.use(passport.authenticate("session"));
