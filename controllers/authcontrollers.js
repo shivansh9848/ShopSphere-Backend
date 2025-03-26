@@ -36,7 +36,7 @@ exports.CreateUser = async (req, res) => {
           } else {
             const token = jwt.sign(
               sanitizeUser(doc),
-              process.env.JWT_SECERT_KEY
+              process.env.JWT_SECRET_KEY
             );
             console.log("Generated token:", token);
             res
