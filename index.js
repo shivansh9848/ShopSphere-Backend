@@ -72,25 +72,26 @@ opts.secretOrKey = process.env.JWT_SECRET_KEY;
 
 server.use(
   cors({
-    exposedHeaders: ["X-Total-Count"],
-    origin: ["http://localhost:3000", "https://shop-sphere-snowy.vercel.app"],
-    credentials: true, // if using cookies
+      origin: ["http://localhost:3000", "https://shop-sphere-snowy.vercel.app"],
+      credentials: true, // if using cookies
+      exposedHeaders: ["X-Total-Count"],
   })
 );
 
 server.use(cookieParser());
 server.use(
-  session({
-    secret: process.env.SESSION_KEY,
-    resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({
-      mongoUrl: process.env.MONGO_URI,
-      // Optional options:
-      ttl: 14 * 24 * 60 * 60, // session expiration in seconds (14 days)
-    }),
-  })
-);
+    session({
+      secret: process.env.SESSION_KEY,
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        secure: process.env.NODE_ENV === "production", // ensures cookies are only sent over HTTPS in production
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // 'none' for cross-site, 'lax' for local testing
+        maxAge: 1000 * 60 * 60 * 24, // 1 day (adjust as needed)
+      },
+    })
+  );
+  
 server.use(passport.authenticate("session"));
 // Routes
 server.use("/products", isAuth(), productsRouter.router);
