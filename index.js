@@ -27,46 +27,49 @@ const stripe = require("stripe")(process.env.STRIPE_SERVER_KEY);
 server.use(express.json()); // to parse req.body
 //WebHook
 
-const endpointSecret = process.env.ENDPOINT_SECERT;
+const endpointSecret = process.env.ENDPOINT_SECRET;
 
-server.post('/webhook', express.raw({type: 'application/json'}), async (request, response) => {
-  const sig = request.headers['stripe-signature'];
+server.post(
+  "/webhook",
+  express.raw({ type: "application/json" }),
+  async (request, response) => {
+    const sig = request.headers["stripe-signature"];
 
-  let event;
+    let event;
 
-  try {
-    event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
-  } catch (err) {
-    response.status(400).send(`Webhook Error: ${err.message}`);
-    return;
+    try {
+      event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
+    } catch (err) {
+      response.status(400).send(`Webhook Error: ${err.message}`);
+      return;
+    }
+
+    // Handle the event
+    switch (event.type) {
+      case "payment_intent.succeeded":
+        const paymentIntentSucceeded = event.data.object;
+        const order = await Order.findById(
+          paymentIntentSucceeded.metadata.orderId
+        );
+        order.paymentStatus = "received";
+        await order.save();
+        // Then define and call a function to handle the event payment_intent.succeeded
+        break;
+      // ... handle other event types
+      default:
+        console.log(`Unhandled event type ${event.type}`);
+    }
+
+    // Return a 200 response to acknowledge receipt of the event
+    response.send();
   }
-
-  // Handle the event
-  switch (event.type) {
-    case 'payment_intent.succeeded':
-      const paymentIntentSucceeded = event.data.object;
-      const order = await Order.findById(
-        paymentIntentSucceeded.metadata.orderId
-      );
-      order.paymentStatus = 'received';
-      await order.save();
-      // Then define and call a function to handle the event payment_intent.succeeded
-      break;
-    // ... handle other event types
-    default:
-      console.log(`Unhandled event type ${event.type}`);
-  }
-
-  // Return a 200 response to acknowledge receipt of the event
-  response.send();
-});
-
+);
 
 // JWT options
 
 const opts = {};
 opts.jwtFromRequest = cookieExtractor;
-opts.secretOrKey = process.env.JWT_SECERT_KEY;
+opts.secretOrKey = process.env.JWT_SECRET_KEY;
 server.use(cors());
 
 //middlewares
@@ -127,7 +130,7 @@ passport.use(
           }
           const token = jwt.sign(
             sanitizeUser(user),
-            process.env.JWT_SECERT_KEY
+            process.env.JWT_SECRET_KEY
           );
           done(null, { id: user.id, role: user.role, token }); // this lines sends to serializer
         }
@@ -173,7 +176,7 @@ passport.deserializeUser(function (user, cb) {
   });
 });
 
-server.post('/create-payment-intent', async (req, res) => {
+server.post("/create-payment-intent", async (req, res) => {
   const { TotalAmount, orderId, customerDetails } = req.body;
 
   try {
@@ -187,8 +190,8 @@ server.post('/create-payment-intent', async (req, res) => {
         city: customerDetails?.address?.city,
         state: customerDetails?.address?.state,
         postal_code: customerDetails?.address?.postal_code,
-        country: customerDetails?.address?.country || 'IN'
-      }
+        country: customerDetails?.address?.country || "IN",
+      },
     });
 
     const paymentIntent = await stripe.paymentIntents.create({
@@ -197,7 +200,7 @@ server.post('/create-payment-intent', async (req, res) => {
       customer: customer.id,
       automatic_payment_methods: { enabled: true },
       description: `Order #${orderId} payment for exported goods/services`,
-      metadata: { orderId }
+      metadata: { orderId },
     });
 
     res.json({ clientSecret: paymentIntent.client_secret });
@@ -206,8 +209,6 @@ server.post('/create-payment-intent', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-
 
 main().catch((err) => console.log(err));
 
