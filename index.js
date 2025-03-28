@@ -69,7 +69,6 @@ server.post(
 const opts = {};
 opts.jwtFromRequest = cookieExtractor;
 opts.secretOrKey = process.env.JWT_SECRET_KEY;
-server.use(cors());
 
 server.use(
   cors({
