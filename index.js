@@ -1,5 +1,5 @@
 require("dotenv").config();
-const MongoStore = require("connect-mongo");
+// const MongoStore = require("connect-mongo");
 const express = require("express");
 const server = express();
 const mongoose = require("mongoose");
@@ -226,7 +226,7 @@ server.post("/create-payment-intent", async (req, res) => {
   }
 });
 
-main().catch((err) => console.log(err));
+// main().catch((err) => console.log(err));
 
 async function main() {
   try {
@@ -234,7 +234,7 @@ async function main() {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
-    console.log("Database connected");
+    console.log("Database connected in Index");
   } catch (error) {
     console.error("Error connecting to MongoDB:", error);
   }
