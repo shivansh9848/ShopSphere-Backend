@@ -58,12 +58,12 @@ exports.CreateUser = async (req, res) => {
 
 exports.loginUser = async (req, res) => {
   // const user = req.user;
-  console.log('Login attempt - req.user:', req.user);
+  console.log("Login attempt - req.user:", req.user);
   const user = req.user;
-  console.log('User data:', {
+  console.log("User data:", {
     id: user?.id,
     role: user?.role,
-    token: user?.token
+    token: user?.token,
   });
 
   res

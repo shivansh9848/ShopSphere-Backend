@@ -51,16 +51,16 @@ server.post(
         const order = await Order.findById(
           paymentIntentSucceeded.metadata.orderId
         );
-        if (order) {
-          order.paymentStatus = "received";
-          await order.save();
-        }
+        order.paymentStatus = "received";
+        await order.save();
+        // Then define and call a function to handle the event payment_intent.succeeded
         break;
+      // ... handle other event types
       default:
         console.log(`Unhandled event type ${event.type}`);
     }
 
-    // Acknowledge receipt of the event
+    // Return a 200 response to acknowledge receipt of the event
     response.send();
   }
 );
@@ -69,29 +69,30 @@ server.post(
 const opts = {};
 opts.jwtFromRequest = cookieExtractor;
 opts.secretOrKey = process.env.JWT_SECRET_KEY;
+server.use(cors());
 
 server.use(
   cors({
-      origin: ["http://localhost:3000", "https://shop-sphere-snowy.vercel.app"],
-      credentials: true, // if using cookies
-      exposedHeaders: ["X-Total-Count"],
+    origin: [process.env.FRONTEND_URL],
+    credentials: true, // if using cookies
+    exposedHeaders: ["X-Total-Count"],
   })
 );
 
 server.use(cookieParser());
 server.use(
-    session({
-      secret: process.env.SESSION_KEY,
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        secure: process.env.NODE_ENV === "production", // ensures cookies are only sent over HTTPS in production
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // 'none' for cross-site, 'lax' for local testing
-        maxAge: 1000 * 60 * 60 * 24, // 1 day (adjust as needed)
-      },
-    })
-  );
-  
+  session({
+    secret: process.env.SESSION_KEY,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production", // ensures cookies are only sent over HTTPS in production
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // 'none' for cross-site, 'lax' for local testing
+      maxAge: 1000 * 60 * 60 * 24, // 1 day (adjust as needed)
+    },
+  })
+);
+
 server.use(passport.authenticate("session"));
 // Routes
 server.use("/products", isAuth(), productsRouter.router);
@@ -102,19 +103,38 @@ server.use("/auth", authRouter.router);
 server.use("/cart", isAuth(), cartRouter.router);
 server.use("/order", isAuth(), orderRouter.router);
 
-
 // Passport Local Strategy
 passport.use(
   "local",
-  new LocalStrategy(
-    { usernameField: "email" },
-    async (email, password, done) => {
-      console.log("LocalStrategy is called");
-      try {
-        const user = await User.findOne({ email: email });
-        if (!user) {
-          return done(null, false, { message: "invalid credentials" });
-        }
+  new LocalStrategy({ usernameField: "email" }, async function (
+    email,
+    password,
+    done
+  ) {
+    // by default passport uses username
+    console.log("LocalStrategy is called");
+    try {
+      const user = await User.findOne({ email: email });
+      console.log(email, password, user);
+      if (!user) {
+        return done(null, false, { message: "invalid credentials" }); // for safety
+      }
+      crypto.pbkdf2(
+        password,
+        user.salt,
+        310000,
+        32,
+        "sha256",
+        async function (err, hashedPassword) {
+          if (!crypto.timingSafeEqual(user.password, hashedPassword)) {
+            return done(null, false, { message: "invalid credentials" });
+          }
+          const token = jwt.sign(
+            sanitizeUser(user),
+            process.env.JWT_SECRET_KEY
+          );
+          done(null, { id: user.id, role: user.role, token }); // this lines sends to serializer
+        },
         crypto.pbkdf2(
           password,
           user.salt,
@@ -131,12 +151,12 @@ passport.use(
             );
             done(null, { id: user.id, role: user.role, token });
           }
-        );
-      } catch (err) {
-        done(err);
-      }
+        )
+      );
+    } catch (err) {
+      done(err);
     }
-  )
+  })
 );
 
 // Passport JWT Strategy
@@ -173,7 +193,6 @@ passport.deserializeUser((user, cb) => {
   });
 });
 
-// Create Payment Intent endpoint
 server.post("/create-payment-intent", async (req, res) => {
   const { TotalAmount, orderId, customerDetails } = req.body;
 
@@ -207,7 +226,8 @@ server.post("/create-payment-intent", async (req, res) => {
   }
 });
 
-// Connect to MongoDB and start server
+main().catch((err) => console.log(err));
+
 async function main() {
   try {
     await mongoose.connect(process.env.MONGO_URI, {
