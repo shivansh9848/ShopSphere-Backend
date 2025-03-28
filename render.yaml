@@ -1,0 +1,11 @@
+services:
+  - name: shopsphere
+    type: web
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: node index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+    staticPublishPath: ./build
+    autoDeploy: true
