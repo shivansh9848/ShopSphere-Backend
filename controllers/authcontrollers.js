@@ -102,7 +102,7 @@ exports.resetPasswordRequest = async (req, res) => {
 
     // Also set token in email
     const resetPageLink =
-      "http://localhost:8080/reset-password?token=" + token + "&email=" + email;
+      "/reset-password?token=" + token + "&email=" + email;
     const subject = "reset password for ShopSphere";
     const html = `<p>Click <a href='${resetPageLink}'>here</a> to Reset Password</p>`;
 
