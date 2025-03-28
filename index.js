@@ -76,6 +76,7 @@ server.use(
     exposedHeaders: ["X-Total-Count"],
   })
 );
+server.use(express.static(path.resolve(__dirname, "build")));
 
 server.use(cookieParser());
 server.use(
@@ -83,11 +84,6 @@ server.use(
     secret: process.env.SESSION_KEY,
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production", // ensures cookies are only sent over HTTPS in production
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // 'none' for cross-site, 'lax' for local testing
-      maxAge: 1000 * 60 * 60 * 24, // 1 day (adjust as needed)
-    },
   })
 );
 
@@ -101,6 +97,10 @@ server.use("/auth", authRouter.router);
 server.use("/cart", isAuth(), cartRouter.router);
 server.use("/order", isAuth(), orderRouter.router);
 
+// this line we add to make react router work in case of other routes doesnt match
+server.get("*", (req, res) =>
+  res.sendFile(path.resolve("build", "index.html"))
+);
 // Passport Local Strategy
 passport.use(
   "local",
