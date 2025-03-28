@@ -72,7 +72,6 @@ opts.secretOrKey = process.env.JWT_SECRET_KEY;
 
 server.use(
   cors({
-    origin: [process.env.FRONTEND_URL],
     credentials: true, // if using cookies
     exposedHeaders: ["X-Total-Count"],
   })
